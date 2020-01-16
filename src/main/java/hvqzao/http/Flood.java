@@ -11,7 +11,8 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultHttpRequest;
-import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.HttpRequestEncoder;
@@ -31,8 +32,12 @@ public class Flood {
 
     public Flood(URI uri) throws KeyManagementException {
         this.host = uri.getHost();
-        this.port = uri.getPort();
         boolean isHttps = "https".equals(uri.getScheme());
+        int uriPort = uri.getPort();
+        if (uriPort == -1) {
+            uriPort = isHttps ? 443 : 80;
+        }
+        this.port = uriPort;
         b = new Bootstrap();
         b.group(workerGroup);
         b.channel(NioSocketChannel.class)
@@ -56,8 +61,8 @@ public class Flood {
                 HttpMethod.GET,
                 uri.getPath());
         request.headers()
-                .set(HttpHeaders.Names.HOST, host)
-                .set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.CLOSE);
+                .set(HttpHeaderNames.HOST, host)
+                .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
     }
 
     public void terminate() {
