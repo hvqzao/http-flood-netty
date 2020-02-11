@@ -148,7 +148,6 @@ public class Flood {
         int num = options.stream().filter((String option) -> {
             return option.startsWith("--pool=");
         }).map((String option) -> {
-            System.out.println(option);
             return Integer.parseInt(option.split("=", 2)[1]);
         }).findFirst().orElse(1);
         System.out.println("Channels per thread: " + String.valueOf(num));
